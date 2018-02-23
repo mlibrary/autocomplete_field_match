@@ -1,14 +1,12 @@
 <?php
 
-namespace Drupal\Core\Entity\Element;
+namespace Drupal\autocomplete_field_match\Element;
 
 use Drupal\Component\Utility\Crypt;
 use Drupal\Component\Utility\Tags;
-use Drupal\Core\Entity\EntityInterface;
-use Drupal\Core\Entity\EntityReferenceSelection\SelectionInterface;
 use Drupal\Core\Entity\EntityReferenceSelection\SelectionWithAutocreateInterface;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\Core\Render\Element\Textfield;
+use Drupal\Core\Entity\Element\EntityAutocomplete;
 use Drupal\Core\Site\Settings;
 
 /**
@@ -17,75 +15,9 @@ use Drupal\Core\Site\Settings;
  * The #default_value accepted by this element is either an entity object or an
  * array of entity objects.
  *
- * @FormElement("entity_autocomplete")
+ * @FormElement("autocomplete_field_match")
  */
-class EntityAutocomplete extends Textfield {
-
-  /**
-   * {@inheritdoc}
-   */
-  public function getInfo() {
-    $info = parent::getInfo();
-    $class = get_class($this);
-
-    // Apply default form element properties.
-    $info['#target_type'] = NULL;
-    $info['#selection_handler'] = 'default';
-    $info['#selection_settings'] = [];
-    $info['#tags'] = FALSE;
-    $info['#autocreate'] = NULL;
-    // This should only be set to FALSE if proper validation by the selection
-    // handler is performed at another level on the extracted form values.
-    $info['#validate_reference'] = TRUE;
-    // IMPORTANT! This should only be set to FALSE if the #default_value
-    // property is processed at another level (e.g. by a Field API widget) and
-    // it's value is properly checked for access.
-    $info['#process_default_value'] = TRUE;
-
-    $info['#element_validate'] = [[$class, 'validateEntityAutocomplete']];
-    array_unshift($info['#process'], [$class, 'processEntityAutocomplete']);
-
-    return $info;
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  public static function valueCallback(&$element, $input, FormStateInterface $form_state) {
-    // Process the #default_value property.
-    if ($input === FALSE && isset($element['#default_value']) && $element['#process_default_value']) {
-      if (is_array($element['#default_value']) && $element['#tags'] !== TRUE) {
-        throw new \InvalidArgumentException('The #default_value property is an array but the form element does not allow multiple values.');
-      }
-      elseif (!empty($element['#default_value']) && !is_array($element['#default_value'])) {
-        // Convert the default value into an array for easier processing in
-        // static::getEntityLabels().
-        $element['#default_value'] = [$element['#default_value']];
-      }
-
-      if ($element['#default_value']) {
-        if (!(reset($element['#default_value']) instanceof EntityInterface)) {
-          throw new \InvalidArgumentException('The #default_value property has to be an entity object or an array of entity objects.');
-        }
-
-        // Extract the labels from the passed-in entity objects, taking access
-        // checks into account.
-        return static::getEntityLabels($element['#default_value']);
-      }
-    }
-
-    // Potentially the #value is set directly, so it contains the 'target_id'
-    // array structure instead of a string.
-    if ($input !== FALSE && is_array($input)) {
-      $entity_ids = array_map(function (array $item) {
-        return $item['target_id'];
-      }, $input);
-
-      $entities = \Drupal::entityTypeManager()->getStorage($element['#target_type'])->loadMultiple($entity_ids);
-
-      return static::getEntityLabels($entities);
-    }
-  }
+class AutocompleteFieldMatchElement extends EntityAutocomplete {
 
   /**
    * Adds entity autocomplete functionality to a form element.
@@ -130,12 +62,12 @@ class EntityAutocomplete extends Textfield {
     $data = serialize($selection_settings) . $element['#target_type'] . $element['#selection_handler'];
     $selection_settings_key = Crypt::hmacBase64($data, Settings::getHashSalt());
 
-    $key_value_storage = \Drupal::keyValue('entity_autocomplete');
+    $key_value_storage = \Drupal::keyValue('autocomplete_field_match');
     if (!$key_value_storage->has($selection_settings_key)) {
       $key_value_storage->set($selection_settings_key, $selection_settings);
     }
 
-    $element['#autocomplete_route_name'] = 'system.entity_autocomplete';
+    $element['#autocomplete_route_name'] = 'autocomplete_field_match.autocomplete';
     $element['#autocomplete_route_parameters'] = [
       'target_type' => $element['#target_type'],
       'selection_handler' => $element['#selection_handler'],
@@ -143,6 +75,121 @@ class EntityAutocomplete extends Textfield {
     ];
 
     return $element;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  private static function fieldMatchQuery($entity_type, $field_to_check, $input, $where, $langcodes, $conjunction) {
+    $langcode = NULL;
+    if (isset($langcodes[0])) {
+      $langcode = array_shift($langcodes);
+    }
+    // TODO? - Inject entity.query service?
+    // There are many other \Drupal calls in this based on
+    // Drupal\Core\Entity\Element\EntityAutocomplete
+    // So not sure if useful or necessary.
+    $query = \Drupal::entityQuery($entity_type)
+      ->condition($field_to_check . '.value', $input, $where, $langcode);
+    if (!empty($langcodes)) {
+      if ($conjunction == 'or') {
+        $and_or = $query->orConditionGroup();
+      }
+      elseif ($conjunction == 'and') {
+        $and_or = $query->andConditionGroup();
+      }
+      foreach ($langcodes as $another_langcode) {
+        $and_or->condition($field_to_check[0][1] . '.value', $input, $where, $another_langcode);
+      }
+      $query->condition($and_or);
+    }
+
+    return array_values($query->execute());
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  private static function combineMatches($field_to_check, $autocomplete_field_matches, $input, $where, $langcodes, $conjunction) {
+    $autocomplete_field_match = [];
+    foreach ($field_to_check as $index => $field) {
+      // If this method is called, first field has already been checked.
+      if ($index < 1) {
+        continue;
+      }
+      $autocomplete_field_matches[] = self::fieldMatchQuery($field_to_check[$index][0], $field_to_check[$index][1], $input, $where, $langcodes, $conjunction);
+    }
+    if ($conjunction == 'or') {
+      foreach ($autocomplete_field_matches as $matches) {
+        $autocomplete_field_match = array_merge($autocomplete_field_match, $matches);
+      }
+    }
+    elseif ($conjunction == 'and') {
+      $partial = FALSE;
+      $num_of_partial = 0;
+      // Pull the first match off and set so we dont intersect with empty array.
+      $first_match = array_shift($autocomplete_field_matches);
+      if (!empty($first_match)) {
+        $partial = TRUE;
+        $num_of_partial = count($first_match);
+        $autocomplete_field_match = $first_match;
+      }
+      // Now make sure match is in all fields.
+      foreach ($autocomplete_field_matches as $matches) {
+        if (!empty($matches)) {
+          $partial = TRUE;
+          $num_of_partial = $num_of_partial + count($matches);
+        }
+        $autocomplete_field_match = array_intersect($autocomplete_field_match, $matches);
+      }
+      // Rekey the array, make sure values are unique and send error if needed.
+      $autocomplete_field_match = array_unique(array_values($autocomplete_field_match));
+      if (empty($autocomplete_field_match) && $partial) {
+        return ['num_of_partial' => $num_of_partial];
+      }
+    }
+
+    return $autocomplete_field_match;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  private static function getAutocompleteFieldMatch(array $element, FormStateInterface $form_state, $input) {
+    $autocomplete_field_matches = [];
+    $autocomplete_field_match = [];
+    if ($element['#type'] == 'autocomplete_field_match' && !empty($element['#selection_settings']['autocomplete_field_match'])) {
+      $fields_to_check = $element['#selection_settings']['autocomplete_field_match'];
+      $conjunction = $element['#selection_settings']['afm_operator_and_or'];
+      $where = $element['#selection_settings']['afm_operator_where'];
+      $langcodes = $element['#selection_settings']['afm_operator_langcode'];
+
+      // Verify our form autocomplete_field_matches values
+      // get the entity based on autocomplete_field_matches.
+      $field_to_check = [];
+      foreach ($fields_to_check as $field) {
+        $field_to_check[] = explode('.', $field);
+      }
+      $autocomplete_field_matches[] = self::fieldMatchQuery($field_to_check[0][0], $field_to_check[0][1], $input, $where, $langcodes, $conjunction);
+
+      if (count($field_to_check) > 1) {
+        $autocomplete_field_match = self::combineMatches($field_to_check, $autocomplete_field_matches, $input, $where, $langcodes, $conjunction);
+        if (isset($autocomplete_field_match['num_of_partial'])) {
+          $params = [
+            '%value' => $input,
+            '%count' => $autocomplete_field_match['num_of_partial'],
+          ];
+          // Error if there are more than 1 matching entities.
+          $form_state->setError($element, t('%count entities contain %value, but not in all fields selected: "%fields". Specify the one you want selecting it from the dropdown autocomplete feature.', ['%fields' => implode('", "', $fields_to_check)] + $params));
+        }
+
+      }
+      else {
+        $autocomplete_field_match = $autocomplete_field_matches[0];
+      }
+    }
+
+    return array_unique($autocomplete_field_match);
   }
 
   /**
@@ -156,7 +203,11 @@ class EntityAutocomplete extends Textfield {
         'target_type' => $element['#target_type'],
         'handler' => $element['#selection_handler'],
       ];
-      /** @var /Drupal\Core\Entity\EntityReferenceSelection\SelectionInterface $handler */
+      // Core does this in Drupal\Core\Entity\Element\EntityAutocomplete
+      // but phpcs --standard=Drupal  throws error:
+      // "Inline doc block comments are not allowed" so commenting out.
+      // @var /Drupal\Core\Entity\EntityReferenceSelection\SelectionInterface $handler
+      // TODO? implement ContainerFactoryPluginInterface & inject all services?
       $handler = \Drupal::service('plugin.manager.entity_reference_selection')->getInstance($options);
       $autocreate = (bool) $element['#autocreate'] && $handler instanceof SelectionWithAutocreateInterface;
 
@@ -173,7 +224,23 @@ class EntityAutocomplete extends Textfield {
           if ($match === NULL) {
             // Try to get a match from the input string when the user didn't use
             // the autocomplete but filled in a value manually.
-            $match = static::matchEntityByTitle($handler, $input, $element, $form_state, !$autocreate);
+            $autocomplete_field_match = self::getAutocompleteFieldMatch($element, $form_state, $input);
+
+            if (count($autocomplete_field_match) == 1 && !empty($autocomplete_field_match[0])) {
+              $match = $autocomplete_field_match[0];
+            }
+            else {
+              if (count($autocomplete_field_match) > 1 && !empty($autocomplete_field_match[0])) {
+                $params = [
+                  '%value' => $input,
+                  '%count' => count($autocomplete_field_match),
+                ];
+                // Error if there are more than 1 matching entities.
+                $fields_to_check = $element['#selection_settings']['autocomplete_field_match'];
+                $form_state->setError($element, t('%count entities contain %value in fields "%fields". Specify the one you want selecting it from the dropdown autocomplete feature.', ['%fields' => implode('", "', $fields_to_check)] + $params));
+              }
+              $match = static::matchEntityByTitle($handler, $input, $element, $form_state, !$autocreate);
+            }
           }
 
           if ($match !== NULL) {
@@ -246,121 +313,6 @@ class EntityAutocomplete extends Textfield {
     }
 
     $form_state->setValueForElement($element, $value);
-  }
-
-  /**
-   * Finds an entity from an autocomplete input without an explicit ID.
-   *
-   * The method will return an entity ID if one single entity unambuguously
-   * matches the incoming input, and sill assign form errors otherwise.
-   *
-   * @param \Drupal\Core\Entity\EntityReferenceSelection\SelectionInterface $handler
-   *   Entity reference selection plugin.
-   * @param string $input
-   *   Single string from autocomplete element.
-   * @param array $element
-   *   The form element to set a form error.
-   * @param \Drupal\Core\Form\FormStateInterface $form_state
-   *   The current form state.
-   * @param bool $strict
-   *   Whether to trigger a form error if an element from $input (eg. an entity)
-   *   is not found.
-   *
-   * @return int|null
-   *   Value of a matching entity ID, or NULL if none.
-   */
-  protected static function matchEntityByTitle(SelectionInterface $handler, $input, array &$element, FormStateInterface $form_state, $strict) {
-    $entities_by_bundle = $handler->getReferenceableEntities($input, '=', 6);
-    $entities = array_reduce($entities_by_bundle, function ($flattened, $bundle_entities) {
-      return $flattened + $bundle_entities;
-    }, []);
-    $params = [
-      '%value' => $input,
-      '@value' => $input,
-    ];
-    if (empty($entities)) {
-      if ($strict) {
-        // Error if there are no entities available for a required field.
-        $form_state->setError($element, t('There are no entities matching "%value".', $params));
-      }
-    }
-    elseif (count($entities) > 5) {
-      $params['@id'] = key($entities);
-      // Error if there are more than 5 matching entities.
-      $form_state->setError($element, t('Many entities are called %value. Specify the one you want by appending the id in parentheses, like "@value (@id)".', $params));
-    }
-    elseif (count($entities) > 1) {
-      // More helpful error if there are only a few matching entities.
-      $multiples = [];
-      foreach ($entities as $id => $name) {
-        $multiples[] = $name . ' (' . $id . ')';
-      }
-      $params['@id'] = $id;
-      $form_state->setError($element, t('Multiple entities match this reference; "%multiple". Specify the one you want by appending the id in parentheses, like "@value (@id)".', ['%multiple' => implode('", "', $multiples)] + $params));
-    }
-    else {
-      // Take the one and only matching entity.
-      return key($entities);
-    }
-  }
-
-  /**
-   * Converts an array of entity objects into a string of entity labels.
-   *
-   * This method is also responsible for checking the 'view label' access on the
-   * passed-in entities.
-   *
-   * @param \Drupal\Core\Entity\EntityInterface[] $entities
-   *   An array of entity objects.
-   *
-   * @return string
-   *   A string of entity labels separated by commas.
-   */
-  public static function getEntityLabels(array $entities) {
-    /** @var \Drupal\Core\Entity\EntityRepositoryInterface $entity_repository */
-    $entity_repository = \Drupal::service('entity.repository');
-
-    $entity_labels = [];
-    foreach ($entities as $entity) {
-      // Set the entity in the correct language for display.
-      $entity = $entity_repository->getTranslationFromContext($entity);
-
-      // Use the special view label, since some entities allow the label to be
-      // viewed, even if the entity is not allowed to be viewed.
-      $label = ($entity->access('view label')) ? $entity->label() : t('- Restricted access -');
-
-      // Take into account "autocreated" entities.
-      if (!$entity->isNew()) {
-        $label .= ' (' . $entity->id() . ')';
-      }
-
-      // Labels containing commas or quotes must be wrapped in quotes.
-      $entity_labels[] = Tags::encode($label);
-    }
-
-    return implode(', ', $entity_labels);
-  }
-
-  /**
-   * Extracts the entity ID from the autocompletion result.
-   *
-   * @param string $input
-   *   The input coming from the autocompletion result.
-   *
-   * @return mixed|null
-   *   An entity ID or NULL if the input does not contain one.
-   */
-  public static function extractEntityIdFromAutocompleteInput($input) {
-    $match = NULL;
-
-    // Take "label (entity id)', match the ID from inside the parentheses.
-    // @todo Add support for entities containing parentheses in their ID.
-    // @see https://www.drupal.org/node/2520416
-    if (preg_match("/.+\s\(([^\)]+)\)/", $input, $matches)) {
-      $match = $matches[1];
-    }
-
-    return $match;
   }
 
 }
