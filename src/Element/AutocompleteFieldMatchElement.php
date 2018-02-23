@@ -8,6 +8,7 @@ use Drupal\Core\Entity\EntityReferenceSelection\SelectionWithAutocreateInterface
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Entity\Element\EntityAutocomplete;
 use Drupal\Core\Site\Settings;
+use Drupal\Component\Utility\Xss;
 
 /**
  * Provides an entity autocomplete form element.
@@ -224,6 +225,7 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
           if ($match === NULL) {
             // Try to get a match from the input string when the user didn't use
             // the autocomplete but filled in a value manually.
+            $input = Xss::filter($input);
             $autocomplete_field_match = self::getAutocompleteFieldMatch($element, $form_state, $input);
 
             if (count($autocomplete_field_match) == 1 && !empty($autocomplete_field_match[0])) {
