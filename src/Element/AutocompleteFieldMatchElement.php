@@ -246,6 +246,9 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
           }
 
           if ($match !== NULL) {
+            // We need to validate that the entity found can be referenced.
+            $element['#validate_reference'] = TRUE;
+
             $value[] = [
               'target_id' => $match,
             ];
@@ -275,7 +278,12 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
           $valid_ids = $handler->validateReferenceableEntities($ids);
           if ($invalid_ids = array_diff($ids, $valid_ids)) {
             foreach ($invalid_ids as $invalid_id) {
-              $form_state->setError($element, t('The referenced entity (%type: %id) does not exist.', ['%type' => $element['#target_type'], '%id' => $invalid_id]));
+              $params = [
+                '%input' => $input,
+                '%type' => $element['#target_type'],
+                '%id' => $invalid_id,
+              ];
+              $form_state->setError($element, t('The entity found for %input (%type: %id) cannot be referenced.', $params));
             }
           }
         }
