@@ -81,7 +81,7 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
   /**
    * {@inheritdoc}
    */
-  private static function fieldMatchQuery($entity_type, $field_to_check, $input, $where, $langcodes, $conjunction) {
+  private static function fieldMatchQuery($entity_type, $field_to_check, $input, $where, $langcodes, $conjunction, $type_of_field = 'value') {
     $langcode = NULL;
     if (isset($langcodes[0])) {
       $langcode = array_shift($langcodes);
@@ -91,7 +91,7 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
     // Drupal\Core\Entity\Element\EntityAutocomplete
     // So not sure if useful or necessary.
     $query = \Drupal::entityQuery($entity_type)
-      ->condition($field_to_check . '.value', $input, $where, $langcode);
+      ->condition($field_to_check . '.' . $type_of_field, $input, $where, $langcode);
     if (!empty($langcodes)) {
       if ($conjunction == 'or') {
         $and_or = $query->orConditionGroup();
@@ -164,6 +164,7 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
       $conjunction = $element['#selection_settings']['afm_operator_and_or'];
       $where = $element['#selection_settings']['afm_operator_where'];
       $langcodes = $element['#selection_settings']['afm_operator_langcode'];
+      $type_of_field = $element['#selection_settings']['autocomplete_field_match_type_of_field'];
 
       // Verify our form autocomplete_field_matches values
       // get the entity based on autocomplete_field_matches.
@@ -171,7 +172,7 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
       foreach ($fields_to_check as $field) {
         $field_to_check[] = explode('.', $field);
       }
-      $autocomplete_field_matches[] = self::fieldMatchQuery($field_to_check[0][0], $field_to_check[0][1], $input, $where, $langcodes, $conjunction);
+      $autocomplete_field_matches[] = self::fieldMatchQuery($field_to_check[0][0], $field_to_check[0][1], $input, $where, $langcodes, $conjunction, $type_of_field);
 
       if (count($field_to_check) > 1) {
         $autocomplete_field_match = self::combineMatches($field_to_check, $autocomplete_field_matches, $input, $where, $langcodes, $conjunction);

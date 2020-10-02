@@ -200,6 +200,15 @@ class AutocompleteFieldMatchWidget extends EntityReferenceAutocompleteWidget imp
       '#options' => $names,
       '#description' => t('Select a field or fields to try to match the user input in the autocomplete field to field(s) other than title when the entity is not selected.<br/><strong>NOTE that you CANNOT select entity reference fields inside entity reference fields!</strong>'),
     ];
+    // TODO: Actually get field types.
+    $element['autocomplete_field_match_type_of_field'] = [
+      '#type' => 'select',
+      '#title' => t('Autocomplete Field Match Type of Field'),
+      '#default_value' => $this->getSetting('autocomplete_field_match_type_of_field'),
+      '#multiple' => FALSE,
+      '#options' => ['value','uri','target_id'],
+      '#description' => t('Select a field type. This is usually "value" but might be something else.'),
+    ];
     $element['afm_operator_and_or'] = [
       '#type' => 'radios',
       '#title' => t('Autocomplete Field Match Operator'),
