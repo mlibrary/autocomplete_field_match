@@ -82,11 +82,6 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
    * {@inheritdoc}
    */
   private static function fieldMatchQuery($entity_type, $field_to_check, $input, $where, $langcodes, $conjunction, $type_of_field = 'value') {
-    // TODO - remove at some point. Here for backward compatibility.
-    if (empty($type_of_field)) {
-      $type_of_field = 'value';
-    }
-    // End todo.
     $langcode = NULL;
     if (isset($langcodes[0])) {
       $langcode = array_shift($langcodes);
@@ -116,14 +111,14 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
   /**
    * {@inheritdoc}
    */
-  private static function combineMatches($field_to_check, $autocomplete_field_matches, $input, $where, $langcodes, $conjunction) {
+  private static function combineMatches($field_to_check, $autocomplete_field_matches, $input, $where, $langcodes, $conjunction, $type_of_field = 'value') {
     $autocomplete_field_match = [];
     foreach ($field_to_check as $index => $field) {
       // If this method is called, first field has already been checked.
       if ($index < 1) {
         continue;
       }
-      $autocomplete_field_matches[] = self::fieldMatchQuery($field_to_check[$index][0], $field_to_check[$index][1], $input, $where, $langcodes, $conjunction);
+      $autocomplete_field_matches[] = self::fieldMatchQuery($field_to_check[$index][0], $field_to_check[$index][1], $input, $where, $langcodes, $conjunction, $type_of_field);
     }
     if ($conjunction == 'or') {
       foreach ($autocomplete_field_matches as $matches) {
@@ -170,6 +165,11 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
       $where = $element['#selection_settings']['afm_operator_where'];
       $langcodes = $element['#selection_settings']['afm_operator_langcode'];
       $type_of_field = $element['#selection_settings']['autocomplete_field_match_type_of_field'];
+      // TODO - remove at some point. Here for backward compatibility.
+      if (empty($type_of_field)) {
+        $type_of_field = 'value';
+      }
+      // End todo.
 
       // Verify our form autocomplete_field_matches values
       // get the entity based on autocomplete_field_matches.
@@ -180,7 +180,7 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
       $autocomplete_field_matches[] = self::fieldMatchQuery($field_to_check[0][0], $field_to_check[0][1], $input, $where, $langcodes, $conjunction, $type_of_field);
 
       if (count($field_to_check) > 1) {
-        $autocomplete_field_match = self::combineMatches($field_to_check, $autocomplete_field_matches, $input, $where, $langcodes, $conjunction);
+        $autocomplete_field_match = self::combineMatches($field_to_check, $autocomplete_field_matches, $input, $where, $langcodes, $conjunction, $type_of_field);
         if (isset($autocomplete_field_match['num_of_partial'])) {
           $params = [
             '%value' => $input,
