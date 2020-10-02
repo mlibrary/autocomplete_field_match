@@ -325,6 +325,7 @@ class AutocompleteFieldMatchWidget extends EntityReferenceAutocompleteWidget imp
     $selection_settings += ['afm_operator_and_or' => $this->getSetting('afm_operator_and_or')];
     $selection_settings += ['afm_operator_where' => $this->getSetting('afm_operator_where')];
     $selection_settings += ['afm_operator_langcode' => $this->getSetting('afm_operator_langcode')];
+    $selection_settings += ['autocomplete_field_match_type_of_field' => $this->getSetting('autocomplete_field_match_type_of_field')];
 
     $element += [
       '#type' => 'autocomplete_field_match',
