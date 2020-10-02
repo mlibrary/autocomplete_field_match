@@ -17,6 +17,7 @@ class AutocompleteFieldMatchController extends EntityAutocompleteController {
     return new static(
       $container->get('entity.autocomplete_matcher'),
       $container->get('keyvalue')->get('autocomplete_field_match'),
+      $container->get('keyvalue')->get('autocomplete_field_match_type_of_field'),
       $container->get('keyvalue')->get('afm_operator_and_or'),
       $container->get('keyvalue')->get('afm_operator_where'),
       $container->get('keyvalue')->get('afm_operator_langcode')
