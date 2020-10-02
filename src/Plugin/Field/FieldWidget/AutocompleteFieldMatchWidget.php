@@ -80,6 +80,7 @@ class AutocompleteFieldMatchWidget extends EntityReferenceAutocompleteWidget imp
   public static function defaultSettings() {
     return [
       'autocomplete_field_match' => [],
+      'autocomplete_field_match_type_of_field' => 'value',
       'afm_operator_and_or' => 'or',
       'afm_operator_where' => '=',
       'afm_operator_langcode' => [],
@@ -206,7 +207,7 @@ class AutocompleteFieldMatchWidget extends EntityReferenceAutocompleteWidget imp
       '#title' => t('Autocomplete Field Match Type of Field'),
       '#default_value' => $this->getSetting('autocomplete_field_match_type_of_field'),
       '#multiple' => FALSE,
-      '#options' => ['value','uri','target_id'],
+      '#options' => ['value' => 'value', 'uri' => 'uri', 'target_id' => 'target_id'],
       '#description' => t('Select a field type. This is usually "value" but might be something else.'),
     ];
     $element['afm_operator_and_or'] = [
@@ -294,6 +295,7 @@ class AutocompleteFieldMatchWidget extends EntityReferenceAutocompleteWidget imp
     else {
       $summary[] = t('AFM no fields set to match');
     }
+    $summary[] = t('AFM field type: @type', ['@type' => $this->getSetting('autocomplete_field_match_type_of_field')]);
     $summary[] = t('AFM operator: @operator', ['@operator' => $this->getSetting('afm_operator_and_or')]);
     $summary[] = t('AFM where operator: @where', ['@where' => $this->getSetting('afm_operator_where')]);
     $languages_to_search = $this->getSetting('afm_operator_langcode');
