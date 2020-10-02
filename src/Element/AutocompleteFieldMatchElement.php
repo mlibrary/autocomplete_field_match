@@ -82,6 +82,11 @@ class AutocompleteFieldMatchElement extends EntityAutocomplete {
    * {@inheritdoc}
    */
   private static function fieldMatchQuery($entity_type, $field_to_check, $input, $where, $langcodes, $conjunction, $type_of_field = 'value') {
+    // TODO - remove at some point. Here for backward compatibility.
+    if (empty($type_of_field)) {
+      $type_of_field = 'value';
+    }
+    // End todo.
     $langcode = NULL;
     if (isset($langcodes[0])) {
       $langcode = array_shift($langcodes);
